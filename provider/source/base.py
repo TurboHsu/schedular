@@ -38,7 +38,7 @@ class Recurrence:
         arguments = ical_presentation[len('RRULE:'):].split(';')
         freq = ''
         count = ''
-        interval = ''
+        interval = '1'
         for arg in arguments:
             name, para = arg.split('=')
             if name == 'FREQ':
@@ -48,7 +48,7 @@ class Recurrence:
             elif name == 'INTERVAL':
                 interval = para
 
-        if not freq or not count or not interval:
+        if not freq or not count:
             raise ArgumentError(message=f'Ical "{ical_presentation}" is missing parameters', argument=None)
 
         if freq == 'WEEKLY':
