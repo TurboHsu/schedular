@@ -89,7 +89,7 @@ class NUISTSourceProvider(SourceProvider):
 
         recurrence = None
         if start_week != end_week:
-            interval = 2 if duration_type == 'odd' else 1
+            interval = 1 if duration_type == 'normal' else 2
             count = (end_week - start_week + 1) // interval
             recurrence = WeeklyRecurrence(interval, count)
 
