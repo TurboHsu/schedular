@@ -1,6 +1,6 @@
 import logging
 
-from provider._google import GoogleProvider, AuthorizationException
+from provider._google import GoogleProvider, AuthorizationException, google_event_to_course
 from provider.destination.base import DestinationProvider
 from provider.source.base import Course
 
@@ -14,7 +14,46 @@ class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
         GoogleProvider.__init__(self, calendar_id, credentials_file, token_file, callback_addr, callback_port,
                                 api_key)
 
-    def set_courses(self, courses: list[Course]) -> list:
+    def remove_courses(self, courses: list[Course]) -> list:
+        try:
+            self._login_or_fail()
+        except AuthorizationException as e:
+            logging.error(e.message, exc_info=e.base_exception)
+            return []
+        if len(courses) <= 0:
+            return []
+
+        earliest_day = courses[0].start_date
+        for course in courses[1:]:
+            if course.start_date < earliest_day:
+                earliest_day = course.start_date
+
+        time_min = earliest_day.replace(tzinfo=self._calendar_tz()) if earliest_day.tzinfo is None else earliest_day
+        events = self._service.events().list(calendarId=self._calendar_id, timeMin=time_min.isoformat()).execute()
+
+        course_remaining = list(courses)
+        events_removal = []
+        for event in events['items']:
+            if 'summary' not in event:
+                continue
+            for course in courses:
+                if course.name != event['summary'] or google_event_to_course(event) != course:
+                    continue
+
+                course_remaining.remove(course)
+                events_removal.append(event)
+
+        if course_remaining:
+            raise LookupError(f'{', '.join(c.name for c in course_remaining)} are not available in calendar')
+
+        events_service = self._service.events()
+        for event in events_removal:
+            events_service.delete(calendarId=self._calendar_id, eventId=event['id']).execute()
+            logging.info(f'Event removed. Name: {event['summary']}, ID: {event['id']}')
+
+        return events_removal
+
+    def add_courses(self, courses: list[Course]) -> list:
         try:
             self._login_or_fail()
         except AuthorizationException as e:
@@ -35,8 +74,10 @@ class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
                         'dateTime': course.end_date.isoformat(),
                         'timeZone': 'Asia/Shanghai',
                     },
-                    'recurrence': [course.recurrence.to_ical_presentation()],
                 }
+                if course.recurrence:
+                    event['recurrence'] = [course.recurrence.to_ical_presentation()]
+
                 event = self._service.events().insert(
                     calendarId=self._calendar_id, body=event).execute()
                 logging.info(

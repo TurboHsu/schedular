@@ -1,10 +1,22 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import google.auth.exceptions as ge
 import googleapiclient.discovery as gcp
+from functools import cache as cache_fun
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 import cache
+from provider.source.base import Course, Recurrence
+
+
+def google_event_to_course(e) -> Course:
+    return Course(name=e['summary'], location=e['location'] if 'location' in e else '',
+                  start_date=datetime.fromisoformat(e['start']['dateTime']).replace(tzinfo=None),
+                  end_date=datetime.fromisoformat(e['end']['dateTime']).replace(tzinfo=None),
+                  recurrence=Recurrence.from_ical_presentation(e['recurrence'][0]) if 'recurrence' in e else None)
 
 
 class AuthorizationException(Exception):
@@ -26,6 +38,12 @@ class GoogleProvider:
         self.__api_key = api_key
         self.__credentials = None
         self._service = None
+
+    @cache_fun
+    def _calendar_tz(self) -> ZoneInfo:
+        self._login_or_fail()
+        info = self._service.calendars().get(calendarId=self._calendar_id).execute()
+        return ZoneInfo(info['timeZone']) if 'timeZone' in info else ZoneInfo('utc')
 
     def _login_or_fail(self):
         if not self._service:

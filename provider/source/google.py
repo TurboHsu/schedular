@@ -1,8 +1,8 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
-from provider._google import GoogleProvider, AuthorizationException
-from provider.source.base import SourceProvider, Course, Recurrence
+from provider._google import GoogleProvider, AuthorizationException, google_event_to_course
+from provider.source.base import SourceProvider, Course
 
 
 class GoogleSourceProvider(SourceProvider, GoogleProvider):
@@ -24,13 +24,8 @@ class GoogleSourceProvider(SourceProvider, GoogleProvider):
             return set()
 
         time_min = self.__first_school_day.replace(
-            tzinfo=timezone.utc) if self.__first_school_day.tzinfo is None else self.__first_school_day
+            tzinfo=self._calendar_tz()) if self.__first_school_day.tzinfo is None else self.__first_school_day
 
         events = self._service.events().list(calendarId=self._calendar_id,
                                              timeMin=time_min.isoformat()).execute()
-        return set(
-            Course(name=e['summary'], location=e['location'],
-                   start_date=datetime.fromisoformat(e['start']['dateTime']).replace(tzinfo=None),
-                   end_date=datetime.fromisoformat(e['end']['dateTime']).replace(tzinfo=None),
-                   recurrence=Recurrence.from_ical_presentation(e['recurrence'][0])) for e
-            in events['items'] if 'summary' in e and len(e['recurrence']) == 1)
+        return set(google_event_to_course(e) for e in events['items'] if 'summary' in e)
