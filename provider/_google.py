@@ -13,7 +13,7 @@ from provider.source.base import Course, Recurrence
 
 
 def google_event_to_course(e) -> Course:
-    return Course(name=e['summary'], location=e['location'] if 'location' in e else '',
+    return Course(name=e['summary'], location=e['location'] if 'location' in e else None,
                   start_date=datetime.fromisoformat(e['start']['dateTime']).replace(tzinfo=None),
                   end_date=datetime.fromisoformat(e['end']['dateTime']).replace(tzinfo=None),
                   recurrence=Recurrence.from_ical_presentation(e['recurrence'][0]) if 'recurrence' in e else None)
