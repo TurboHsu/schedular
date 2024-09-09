@@ -145,17 +145,18 @@ class NUISTSourceProvider(SourceProvider):
             # parse weekday to number
             weekday = weekdays.index(weekday)
 
-            # parse duration to start and end week
-            duration_type = 'normal'
-            if '单' in duration:
-                duration_type = 'odd'
-                duration = duration.replace('(单)', '')
-            elif '双' in duration:
-                duration_type = 'even'
-                duration = duration.replace('(双)', '')
 
             l = duration.split(',')
             for component in l:
+                duration_type = 'normal'
+                # parse duration to start and end week
+                if '单' in component:
+                    duration_type = 'odd'
+                    component = component.replace('(单)', '')
+                elif '双' in duration:
+                    duration_type = 'even'
+                    component = component.replace('(双)', '')
+
                 span = component.replace('周', '').split('-')
                 start_week = int(span[0])
                 end_week = int(span[1]) if len(span) > 1 else start_week
