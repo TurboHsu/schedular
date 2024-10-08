@@ -1,5 +1,6 @@
 import datetime
 import logging
+import math
 
 import ddddocr as ocr
 import requests
@@ -90,7 +91,7 @@ class NUISTSourceProvider(SourceProvider):
         recurrence = None
         if start_week != end_week:
             interval = 1 if duration_type == 'normal' else 2
-            count = (end_week - start_week + 1) // interval
+            count = math.ceil((end_week - start_week + 1) / interval)
             recurrence = WeeklyRecurrence(interval, count)
 
         return Course(
