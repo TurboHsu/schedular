@@ -26,6 +26,19 @@ class GoogleSourceProvider(SourceProvider, GoogleProvider):
         time_min = self.__first_school_day.replace(
             tzinfo=self._calendar_tz()) if self.__first_school_day.tzinfo is None else self.__first_school_day
 
-        events = self._service.events().list(calendarId=self._calendar_id,
-                                             timeMin=time_min.isoformat()).execute()
-        return set(google_event_to_course(e) for e in events['items'] if 'summary' in e)
+        result = set()
+        page_token = None
+        while True:
+            events = self._service.events().list(calendarId=self._calendar_id,
+                                             timeMin=time_min.isoformat(),
+                                             pageToken=page_token).execute()
+            for e in events['items']:
+                if 'summary' in e:
+                    result.add(google_event_to_course(e))
+
+            if 'nextPageToken' in events:
+                page_token = events['nextPageToken']
+            else:
+                break
+
+        return result
