@@ -1,9 +1,12 @@
-from playwright.sync_api import sync_playwright, Playwright
-from provider.source.base import SourceProvider, Course
-import ddddocr as ocr
 import datetime
-import requests
 import logging
+import math
+
+import ddddocr as ocr
+import requests
+from playwright.sync_api import sync_playwright
+
+from provider.source.base import SourceProvider, Course, WeeklyRecurrence
 
 default_class_timetable = [
     8 * 60 * 60 + 00 * 60,
@@ -70,11 +73,40 @@ class NUISTSourceProvider(SourceProvider):
         logging.info("Got sweet cookie, u want one?")
         return
 
-    def get_courses(self) -> list[Course]:
+    def __create_course(self, name: str, location: str, start_week: int, end_week: int, start_time: int, end_time: int,
+                        weekday: int, duration_type: str) -> Course:
+        start_date = self.__first_school_day + \
+                     datetime.timedelta(days=(start_week - 1) * 7 + weekday)
+
+        start_time = self.__class_timetable[start_time - 1]
+        end_time = self.__class_timetable[end_time - 1]
+        if start_time != end_time:
+            end_time += 45 * 60
+
+        start_date = start_date.replace(
+            hour=start_time // 3600, minute=(start_time % 3600) // 60, second=start_time % 60)
+        end_date = start_date.replace(
+            hour=end_time // 3600, minute=(end_time % 3600) // 60, second=end_time % 60)
+
+        recurrence = None
+        if start_week != end_week:
+            interval = 1 if duration_type == 'normal' else 2
+            count = math.ceil((end_week - start_week + 1) / interval)
+            recurrence = WeeklyRecurrence(interval, count)
+
+        return Course(
+            name=name,
+            location=location,
+            recurrence=recurrence,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def get_courses(self) -> set[Course]:
         if self.__cookies is None:
             self.__get_cookies()
 
-        courses = []
+        courses = set()
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0',
@@ -100,63 +132,39 @@ class NUISTSourceProvider(SourceProvider):
         ).json()
 
         table = response['datas']['cxxszhxqkb']['rows']
+        weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+
         for c in table:
             name = c['KCM']
             location = c['JASMC']
-            duration = c['ZCMC']  # 1-15周(单)
+            duration = c['ZCMC']  # 1-15周(单) / 1,2,3周
             weekday = c['SKXQ_DISPLAY']  # 星期x
             start_time = int(c['KSJC_DISPLAY'].replace(
                 '第', '').replace('节', ''))
             end_time = int(c['JSJC_DISPLAY'].replace('第', '').replace('节', ''))
 
             # parse weekday to number
-            weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
             weekday = weekdays.index(weekday)
 
-            # parse duration to start and end week
-            duration_type = 'normal'
-            if '单' in duration:
-                duration_type = 'odd'
-                duration = duration.replace('(单)', '')
-            elif '双' in duration:
-                duration_type = 'even'
-                duration = duration.replace('(双)', '')
-            duration = duration.replace('周', '').split('-')
-            start_week = int(duration[0])
-            end_week = int(duration[1])
 
-            start_date = self.__first_school_day + \
-                datetime.timedelta(days=(start_week - 1) * 7 + weekday)
+            l = duration.split(',')
+            for component in l:
+                duration_type = 'normal'
+                # parse duration to start and end week
+                if '单' in component:
+                    duration_type = 'odd'
+                    component = component.replace('(单)', '')
+                elif '双' in duration:
+                    duration_type = 'even'
+                    component = component.replace('(双)', '')
 
-            start_time = self.__class_timetable[start_time - 1]
-            end_time = self.__class_timetable[end_time - 1]
-            if start_time != end_time:
-                end_time += 45 * 60
+                span = component.replace('周', '').split('-')
+                start_week = int(span[0])
+                end_week = int(span[1]) if len(span) > 1 else start_week
 
-            start_date = start_date.replace(
-                hour=start_time // 3600, minute=(start_time % 3600) // 60, second=start_time % 60)
-            end_date = start_date.replace(
-                hour=end_time // 3600, minute=(end_time % 3600) // 60, second=end_time % 60)
-
-            last_time = datetime.timedelta(seconds=end_time - start_time)
-
-            recurrence = ""
-            if start_week != end_week:
-                interval = 2 if duration_type == 'odd' else 1
-                count = (end_week - start_week + 1) // interval
-                recurrence = f"RRULE:FREQ=WEEKLY;INTERVAL={
-                    interval};COUNT={count}"
-
-            course = Course(
-                name=name,
-                location=location,
-                recurrence=recurrence,
-                start_date=start_date,
-                end_date=end_date,
-                last_time=last_time
-            )
-
-            courses.append(course)
+                course = self.__create_course(name, location, start_week, end_week, start_time, end_time, weekday,
+                                              duration_type)
+                courses.add(course)
 
         logging.info(f"Fetched {len(courses)} courses")
         return courses

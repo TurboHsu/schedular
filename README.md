@@ -12,7 +12,7 @@ pipenv sync
 
 ## Usage
 
-Just check out the example.
+Just check out the [example](main.example.py).
 
 ## Providers documentation
 

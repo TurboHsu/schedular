@@ -1,69 +1,64 @@
-from provider.destination.base import DestinationProvider
-from provider.source.base import Course
-import cache
 import logging
 
-import datetime
-import google.auth.exceptions
-import googleapiclient.discovery as gcp
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from provider._google import GoogleProvider, AuthorizationException, google_event_to_course
+from provider.destination.base import DestinationProvider
+from provider.source.base import Course
 
 
-class GoogleDestinationProvider(DestinationProvider):
-    def __init__(self, calendar_id: str = 'primary', credentials_file: str = './cache/google_credentials.json', token_file: str = 'google_token.json', callback_addr: str = 'localhost', callback_port: int = 24849, api_key: str = None):
-        self.__calendar_id = calendar_id
-        self.__credentials_file = credentials_file
-        self.__callback_addr = callback_addr
-        self.__callback_port = callback_port
-        self.__token_file = token_file
-        self.__api_key = api_key
-        self.__credentials = None
-        self.__service = None
-        super().__init__()
+class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
 
-    def __login(self):
-        if self.__api_key is None:
-            if cache.exists(self.__token_file):
-                self.__credentials = Credentials.from_authorized_user_file(
-                    cache.get_file(self.__token_file))
+    def __init__(self, calendar_id: str = 'primary', credentials_file: str = './cache/google_credentials.json',
+                 token_file: str = 'google_token.json', callback_addr: str = 'localhost', callback_port: int = 24849,
+                 api_key: str = None):
+        DestinationProvider.__init__(self)
+        GoogleProvider.__init__(self, calendar_id, credentials_file, token_file, callback_addr, callback_port,
+                                api_key)
 
-            updated = False
-            if not self.__credentials or not self.__credentials.valid:
-                updated = True
-                if self.__credentials and self.__credentials.expired and self.__credentials.refresh_token:
-                    self.__credentials.refresh(Request())
-                else:
-                    scope = ['https://www.googleapis.com/auth/calendar']
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        self.__credentials_file, scope)
-                    self.__credentials = flow.run_local_server(
-                        bind_addr=self.__callback_addr, port=self.__callback_port)
-                    with cache.open_cache(self.__token_file, 'w') as token:
-                        token.write(self.__credentials.to_json())
+    def remove_courses(self, courses: list[Course]) -> list:
+        try:
+            self._login_or_fail()
+        except AuthorizationException as e:
+            logging.error(e.message, exc_info=e.base_exception)
+            return []
+        if len(courses) <= 0:
+            return []
 
-            if not self.__service or updated:
-                self.__service = gcp.build(
-                    'calendar', 'v3', credentials=self.__credentials)
-        else:
-            self.__service = gcp.build(
-                'calendar', 'v3', developerKey=self.__api_key)
+        earliest_day = courses[0].start_date
+        for course in courses[1:]:
+            if course.start_date < earliest_day:
+                earliest_day = course.start_date
 
-    def set_courses(self, courses: list[Course]) -> list:
-        if not self.__service:
-            try:
-                self.__login()
-            except google.auth.exceptions.TransportError as e:
-                logging.warning(
-                    f'Google calendar failed due to network error: {e}')
-                return []
-            except google.auth.exceptions.RefreshError as e:
-                logging.warning(f'Failed to refresh Google calendar: {e}')
-                return []
-            except google.auth.exceptions.GoogleAuthError as e:
-                logging.warning(f'Failed to authorized Google calendar: {e}')
-                return []
+        time_min = earliest_day.replace(tzinfo=self._calendar_tz()) if earliest_day.tzinfo is None else earliest_day
+        events = self._service.events().list(calendarId=self._calendar_id, timeMin=time_min.isoformat()).execute()
+
+        course_remaining = list(courses)
+        events_removal = []
+        for event in events['items']:
+            if 'summary' not in event:
+                continue
+            for course in courses:
+                if course.name != event['summary'] or google_event_to_course(event) != course:
+                    continue
+
+                course_remaining.remove(course)
+                events_removal.append(event)
+
+        if course_remaining:
+            raise LookupError(f'{', '.join(c.name for c in course_remaining)} are not available in calendar')
+
+        events_service = self._service.events()
+        for event in events_removal:
+            events_service.delete(calendarId=self._calendar_id, eventId=event['id']).execute()
+            logging.info(f'Event removed. Name: {event['summary']}, ID: {event['id']}')
+
+        return events_removal
+
+    def add_courses(self, courses: list[Course]) -> list:
+        try:
+            self._login_or_fail()
+        except AuthorizationException as e:
+            logging.error(e.message, exc_info=e.base_exception)
+            return []
 
         try:
             events = []
@@ -79,10 +74,12 @@ class GoogleDestinationProvider(DestinationProvider):
                         'dateTime': course.end_date.isoformat(),
                         'timeZone': 'Asia/Shanghai',
                     },
-                    'recurrence': [course.recurrence],
                 }
-                event = self.__service.events().insert(
-                    calendarId=self.__calendar_id, body=event).execute()
+                if course.recurrence:
+                    event['recurrence'] = [course.recurrence.to_ical_presentation()]
+
+                event = self._service.events().insert(
+                    calendarId=self._calendar_id, body=event).execute()
                 logging.info(
                     f'Event created! Name: {course.name}, ID: {event.get("id")}')
                 events.append(event)
