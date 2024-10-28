@@ -15,3 +15,6 @@ def get_file(file: str):
         os.mkdir(cache_dir)
 
     return os.path.join(cache_dir, file)
+
+def remove(file: str):
+    os.remove(get_file(file))

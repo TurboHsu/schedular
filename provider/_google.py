@@ -1,5 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import time
 
 import google.auth.exceptions as ge
 import googleapiclient.discovery as gcp
@@ -45,17 +46,32 @@ class GoogleProvider:
         info = self._service.calendars().get(calendarId=self._calendar_id).execute()
         return ZoneInfo(info['timeZone']) if 'timeZone' in info else ZoneInfo('utc')
 
-    def _login_or_fail(self):
+    def _login_or_fail(self, max_retry: int = 1):
         if not self._service:
-            try:
-                self._login()
-            except ge.TransportError as e:
-                raise AuthorizationException(
-                    'Google calendar failed due to network error', e)
-            except ge.RefreshError as e:
-                raise AuthorizationException('Failed to refresh Google calendar', e)
-            except ge.GoogleAuthError as e:
-                raise AuthorizationException('Failed to authorized Google calendar', e)
+            for attempt in range(max_retry + 1):
+                try:
+                    self._login()
+                    break
+                except ge.TransportError as e:
+                    raise AuthorizationException(
+                        'Google calendar failed due to network error', e)
+                except ge.RefreshError as e:
+                    if cache.exists(self.__token_file):
+                        cache.remove(self.__token_file)
+                        print('Failed to access Google calendar, token removed')
+                    if max_retry > 0:
+                        max_retry -= 1
+                        time.sleep(1)
+                        
+                        # clean up
+                        self.__credentials = None
+                        self._service = None
+                        
+                        print('Retrying...')
+                    else:
+                        raise AuthorizationException('Failed to refresh Google calendar', e)
+                except ge.GoogleAuthError as e:
+                    raise AuthorizationException('Failed to authorized Google calendar', e)
 
     def _login(self):
         if self.__api_key is None:
