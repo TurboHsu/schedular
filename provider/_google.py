@@ -59,7 +59,8 @@ class GoogleProvider:
             except ge.RefreshError as e:
                 if e.args[1]['error'] == 'invalid_grant':
                     os.remove(cache.get_file(self.__token_file))
-                    self.__api_key = None
+                    self.__credentials = None
+                    self._service = None
                     raise RetryException()
                 else:
                     raise AuthorizationException('Failed to refresh Google calendar', e)
