@@ -1,6 +1,6 @@
 import logging
 
-from provider._google import GoogleProvider, AuthorizationException, google_event_to_course
+from provider._google import GoogleProvider, AuthorizationException, google_event_to_course, RetryException
 from provider.destination.base import DestinationProvider
 from provider.source.base import Course
 
@@ -17,6 +17,8 @@ class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
     def remove_courses(self, courses: list[Course]) -> list:
         try:
             self._login_or_fail()
+        except RetryException:
+            return self.remove_courses(courses)
         except AuthorizationException as e:
             logging.error(e.message, exc_info=e.base_exception)
             return []
@@ -56,6 +58,8 @@ class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
     def add_courses(self, courses: list[Course]) -> list:
         try:
             self._login_or_fail()
+        except RetryException:
+            return self.add_courses(courses)
         except AuthorizationException as e:
             logging.error(e.message, exc_info=e.base_exception)
             return []

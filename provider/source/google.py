@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from provider._google import GoogleProvider, AuthorizationException, google_event_to_course
+from provider._google import GoogleProvider, AuthorizationException, google_event_to_course, RetryException
 from provider.source.base import SourceProvider, Course
 
 
@@ -19,6 +19,8 @@ class GoogleSourceProvider(SourceProvider, GoogleProvider):
     def get_courses(self) -> set[Course]:
         try:
             self._login_or_fail()
+        except RetryException:
+            return self.get_courses()
         except AuthorizationException as e:
             logging.error(e.message, exc_info=e.base_exception)
             return set()

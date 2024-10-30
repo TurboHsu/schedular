@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,9 @@ class AuthorizationException(Exception):
         super().__init__(message, base_exception)
         self.message = message
         self.base_exception = base_exception
+
+class RetryException(Exception):
+    pass
 
 
 class GoogleProvider:
@@ -53,7 +57,12 @@ class GoogleProvider:
                 raise AuthorizationException(
                     'Google calendar failed due to network error', e)
             except ge.RefreshError as e:
-                raise AuthorizationException('Failed to refresh Google calendar', e)
+                if e.args[1]['error'] == 'invalid_grant':
+                    os.remove(cache.get_file(self.__token_file))
+                    self.__api_key = None
+                    raise RetryException()
+                else:
+                    raise AuthorizationException('Failed to refresh Google calendar', e)
             except ge.GoogleAuthError as e:
                 raise AuthorizationException('Failed to authorized Google calendar', e)
 
