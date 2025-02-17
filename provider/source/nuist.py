@@ -54,9 +54,10 @@ class NUISTSourceProvider(SourceProvider):
             page.wait_for_selector('#login_submit').click()
 
             # Login course system
-            page.goto(
-                "http://jwxt.nuist.edu.cn/jwapp/sys/yjsrzfwapp/dbLogin/main.do")
-            page.wait_for_load_state('load')
+            while not page.url.startswith('http://jwxt'):
+                page.goto(
+                    "http://jwxt.nuist.edu.cn/jwapp/sys/yjsrzfwapp/dbLogin/main.do")
+                page.wait_for_load_state('load')
             page.wait_for_selector('#tyrzBtn').click()
             page.wait_for_url(
                 'http://jwxt.nuist.edu.cn/jwapp/sys/emaphome/portal/index.do?forceCas=1')
