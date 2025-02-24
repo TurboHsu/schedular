@@ -155,7 +155,7 @@ class NUISTSourceProvider(SourceProvider):
                 if '单' in component:
                     duration_type = 'odd'
                     component = component.replace('(单)', '')
-                elif '双' in duration:
+                elif '双' in component:
                     duration_type = 'even'
                     component = component.replace('(双)', '')
 
