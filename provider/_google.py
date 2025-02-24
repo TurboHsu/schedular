@@ -1,10 +1,10 @@
 import os
 from datetime import datetime
+from functools import cache as cache_fun
 from zoneinfo import ZoneInfo
 
 import google.auth.exceptions as ge
 import googleapiclient.discovery as gcp
-from functools import cache as cache_fun
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -25,6 +25,7 @@ class AuthorizationException(Exception):
         super().__init__(message, base_exception)
         self.message = message
         self.base_exception = base_exception
+
 
 class RetryException(Exception):
     pass
