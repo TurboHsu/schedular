@@ -80,7 +80,7 @@ class GoogleDestinationProvider(DestinationProvider, GoogleProvider):
                     },
                 }
                 if course.recurrence:
-                    event['recurrence'] = [course.recurrence.to_ical_presentation()]
+                    event['recurrence'] = course.recurrence.to_ical_presentation()
 
                 event = self._service.events().insert(
                     calendarId=self._calendar_id, body=event).execute()

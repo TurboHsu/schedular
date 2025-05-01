@@ -100,8 +100,8 @@ class WeeklyRecurrence(Recurrence):
 
     def to_ical_presentation(self) -> list[str]:
         l = [f'RRULE:FREQ=WEEKLY;COUNT={self.count};INTERVAL={self.interval}']
-        if self.arguments:
-            for arg in self.arguments:
+        if self.extra_args:
+            for arg in self.extra_args:
                 l.append(arg.to_ical_presentation())
         return l
 
